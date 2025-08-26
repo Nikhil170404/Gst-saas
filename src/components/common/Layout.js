@@ -1,4 +1,4 @@
-// src/components/common/Layout.js
+// src/components/common/Layout.js - Enhanced version
 import React, { useState } from 'react';
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
@@ -8,15 +8,42 @@ const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+      {/* Enhanced Navbar */}
+      <Navbar 
+        onMenuClick={() => setSidebarOpen(!sidebarOpen)} 
+        sidebarOpen={sidebarOpen}
+      />
+      
+      {/* Main Layout */}
       <div className="flex">
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className={`main-content ${sidebarOpen ? 'with-sidebar' : ''}`}>
-          <div className="container">
-            {children}
+        {/* Enhanced Sidebar */}
+        <Sidebar 
+          isOpen={sidebarOpen} 
+          onClose={() => setSidebarOpen(false)} 
+        />
+        
+        {/* Main Content Area */}
+        <main className={`
+          main-content transition-all duration-300 ease-in-out
+          ${sidebarOpen ? 'with-sidebar' : ''}
+          flex-1 min-h-screen
+        `}>
+          <div className="container max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            {/* Content Wrapper with Animation */}
+            <div className="animate-fade-in">
+              {children}
+            </div>
           </div>
         </main>
       </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden transition-opacity duration-300"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
     </div>
   );
 };

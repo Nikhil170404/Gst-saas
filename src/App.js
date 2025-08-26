@@ -7,6 +7,8 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import Layout from './components/common/Layout';
 import LoadingSpinner from './components/common/LoadingSpinner';
 import './styles/global.css';
+import './styles/components.css';
+import './styles/modern.css';
 
 // Lazy load pages for better performance
 const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'));
