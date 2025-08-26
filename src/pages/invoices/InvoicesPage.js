@@ -1,4 +1,4 @@
-// src/pages/invoices/InvoicesPage.js
+// src/pages/invoices/InvoicesPage.js - Mobile-Optimized Version
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -14,6 +14,8 @@ const InvoicesPage = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('card'); // 'card' or 'table'
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -74,6 +76,101 @@ const InvoicesPage = () => {
     ).length
   };
 
+  const getStatusColor = (status, isOverdue = false) => {
+    if (isOverdue) return 'bg-red-100 text-red-700 border-red-200';
+    switch (status) {
+      case 'paid': return 'bg-green-100 text-green-700 border-green-200';
+      case 'pending': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+      case 'draft': return 'bg-gray-100 text-gray-700 border-gray-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+  };
+
+  const getStatusIcon = (status, isOverdue = false) => {
+    if (isOverdue) return '⚠️';
+    switch (status) {
+      case 'paid': return '✅';
+      case 'pending': return '⏳';
+      case 'draft': return '📝';
+      default: return '📄';
+    }
+  };
+
+  // Mobile Card Component
+  const InvoiceCard = ({ invoice }) => {
+    const dueDate = invoice.dueDate?.toDate?.() || new Date(invoice.dueDate);
+    const isOverdue = invoice.status !== 'paid' && dueDate < new Date();
+    
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1 min-w-0">
+            <Link 
+              to={`/invoices/${invoice.id}`}
+              className="font-semibold text-gray-900 hover:text-primary-600 transition-colors block truncate"
+            >
+              {invoice.invoiceNumber}
+            </Link>
+            <p className="text-sm text-gray-600 truncate">{invoice.clientName}</p>
+          </div>
+          <div className="flex items-center gap-2 ml-3">
+            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(invoice.status, isOverdue)}`}>
+              <span>{getStatusIcon(invoice.status, isOverdue)}</span>
+              {isOverdue ? 'Overdue' : invoice.status}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Amount</p>
+            <p className="font-semibold text-lg">₹{invoice.total?.toLocaleString('en-IN')}</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Due Date</p>
+            <p className={`text-sm font-medium ${isOverdue ? 'text-red-600' : 'text-gray-700'}`}>
+              {format(dueDate, 'MMM dd, yyyy')}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+          <p className="text-xs text-gray-500">
+            Created {format(invoice.createdAt?.toDate?.() || new Date(invoice.createdAt), 'MMM dd, yyyy')}
+          </p>
+          
+          <div className="flex items-center gap-2">
+            {/* Status Update Dropdown */}
+            <select
+              value={invoice.status}
+              onChange={(e) => handleStatusUpdate(invoice.id, e.target.value)}
+              className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white focus:border-primary-500 focus:outline-none"
+            >
+              <option value="draft">Draft</option>
+              <option value="pending">Pending</option>
+              <option value="paid">Paid</option>
+            </select>
+            
+            {/* Actions Menu */}
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  // Toggle dropdown menu - you can implement this
+                }}
+                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <div className="loading">
@@ -84,108 +181,170 @@ const InvoicesPage = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm-flex-row sm-items-center sm-justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
-          <p className="text-gray-600">Manage and track your invoices</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Invoices</h1>
+          <p className="text-gray-600 mt-1">Manage and track your invoices</p>
         </div>
         
-        <Link to="/invoices/create" className="btn btn-primary">
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Create Invoice
-        </Link>
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* View Toggle - Desktop Only */}
+          <div className="hidden sm:flex items-center bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('card')}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                viewMode === 'card' 
+                  ? 'bg-white text-gray-900 shadow-sm' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                viewMode === 'table' 
+                  ? 'bg-white text-gray-900 shadow-sm' 
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+            </button>
+          </div>
+
+          <Link to="/invoices/create" className="btn btn-primary whitespace-nowrap">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span className="hidden sm:inline">Create Invoice</span>
+            <span className="sm:hidden">Create</span>
+          </Link>
+        </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md-grid-cols-4 lg-grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         <div className="card">
           <div className="card-body text-center">
-            <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-            <div className="text-sm text-gray-600">Total</div>
+            <div className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</div>
+            <div className="text-xs sm:text-sm text-gray-600">Total</div>
           </div>
         </div>
         
         <div className="card">
           <div className="card-body text-center">
-            <div className="text-2xl font-bold text-success-600">{stats.paid}</div>
-            <div className="text-sm text-gray-600">Paid</div>
+            <div className="text-xl sm:text-2xl font-bold text-green-600">{stats.paid}</div>
+            <div className="text-xs sm:text-sm text-gray-600">Paid</div>
           </div>
         </div>
         
         <div className="card">
           <div className="card-body text-center">
-            <div className="text-2xl font-bold text-warning-600">{stats.pending}</div>
-            <div className="text-sm text-gray-600">Pending</div>
+            <div className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.pending}</div>
+            <div className="text-xs sm:text-sm text-gray-600">Pending</div>
           </div>
         </div>
         
         <div className="card">
           <div className="card-body text-center">
-            <div className="text-2xl font-bold text-gray-600">{stats.draft}</div>
-            <div className="text-sm text-gray-600">Draft</div>
+            <div className="text-xl sm:text-2xl font-bold text-gray-600">{stats.draft}</div>
+            <div className="text-xs sm:text-sm text-gray-600">Draft</div>
           </div>
         </div>
         
-        <div className="card">
+        <div className="card col-span-2 sm:col-span-1">
           <div className="card-body text-center">
-            <div className="text-2xl font-bold text-error-600">{stats.overdue}</div>
-            <div className="text-sm text-gray-600">Overdue</div>
+            <div className="text-xl sm:text-2xl font-bold text-red-600">{stats.overdue}</div>
+            <div className="text-xs sm:text-sm text-gray-600">Overdue</div>
           </div>
         </div>
       </div>
 
-      {/* Filters and Search */}
+      {/* Search and Filters */}
       <div className="card">
         <div className="card-body">
-          <div className="flex flex-col sm-flex-row gap-4">
-            <div className="flex-1">
+          <div className="space-y-4">
+            {/* Search Bar */}
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
               <input
                 type="text"
                 placeholder="Search invoices..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="form-input"
+                className="form-input pl-10 w-full"
               />
             </div>
             
-            <div className="flex gap-2">
+            {/* Mobile Filter Toggle */}
+            <div className="sm:hidden">
               <button
-                onClick={() => setFilter('all')}
-                className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center justify-between w-full p-3 bg-gray-50 rounded-lg text-left"
               >
-                All
+                <span className="font-medium text-gray-700">
+                  Filter: {filter === 'all' ? 'All Invoices' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+                </span>
+                <svg 
+                  className={`w-5 h-5 text-gray-500 transition-transform ${showFilters ? 'rotate-180' : ''}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
               </button>
-              <button
-                onClick={() => setFilter('draft')}
-                className={`btn btn-sm ${filter === 'draft' ? 'btn-primary' : 'btn-secondary'}`}
-              >
-                Draft
-              </button>
-              <button
-                onClick={() => setFilter('pending')}
-                className={`btn btn-sm ${filter === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
-              >
-                Pending
-              </button>
-              <button
-                onClick={() => setFilter('paid')}
-                className={`btn btn-sm ${filter === 'paid' ? 'btn-primary' : 'btn-secondary'}`}
-              >
-                Paid
-              </button>
+            </div>
+
+            {/* Filter Buttons */}
+            <div className={`${showFilters ? 'block' : 'hidden'} sm:block`}>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: 'all', label: 'All', count: stats.total },
+                  { key: 'draft', label: 'Draft', count: stats.draft },
+                  { key: 'pending', label: 'Pending', count: stats.pending },
+                  { key: 'paid', label: 'Paid', count: stats.paid }
+                ].map(({ key, label, count }) => (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setFilter(key);
+                      setShowFilters(false);
+                    }}
+                    className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      filter === key 
+                        ? 'bg-primary-100 text-primary-700 border-primary-200' 
+                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                    } border`}
+                  >
+                    {label}
+                    {count > 0 && (
+                      <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs">
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Invoices Table */}
-      <div className="card">
-        <div className="card-body p-0">
-          {filteredInvoices.length === 0 ? (
+      {/* Content */}
+      {filteredInvoices.length === 0 ? (
+        <div className="card">
+          <div className="card-body">
             <div className="empty-state">
               <div className="empty-state-icon">
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -207,86 +366,103 @@ const InvoicesPage = () => {
                 </Link>
               )}
             </div>
-          ) : (
-            <div className="table-container">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Invoice #</th>
-                    <th>Client</th>
-                    <th>Amount</th>
-                    <th>Status</th>
-                    <th>Date</th>
-                    <th>Due Date</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInvoices.map((invoice) => {
-                    const dueDate = invoice.dueDate?.toDate?.() || new Date(invoice.dueDate);
-                    const isOverdue = invoice.status !== 'paid' && dueDate < new Date();
-                    
-                    return (
-                      <tr key={invoice.id}>
-                        <td className="font-medium">
-                          <Link 
-                            to={`/invoices/${invoice.id}`}
-                            className="text-primary-600 hover:text-primary-700"
-                          >
-                            {invoice.invoiceNumber}
-                          </Link>
-                        </td>
-                        <td>{invoice.clientName}</td>
-                        <td className="font-medium">₹{invoice.total?.toLocaleString('en-IN')}</td>
-                        <td>
-                          <span className={`badge ${
-                            invoice.status === 'paid' 
-                              ? 'badge-success'
-                              : invoice.status === 'pending'
-                              ? isOverdue ? 'badge-danger' : 'badge-warning'
-                              : 'badge-info'
-                          }`}>
-                            {isOverdue && invoice.status === 'pending' ? 'Overdue' : invoice.status}
-                          </span>
-                        </td>
-                        <td>{format(invoice.createdAt?.toDate?.() || new Date(invoice.createdAt), 'MMM dd, yyyy')}</td>
-                        <td className={isOverdue ? 'text-error-600 font-medium' : ''}>
-                          {format(dueDate, 'MMM dd, yyyy')}
-                        </td>
-                        <td>
-                          <div className="flex items-center gap-2">
-                            {/* Status dropdown */}
-                            <select
-                              value={invoice.status}
-                              onChange={(e) => handleStatusUpdate(invoice.id, e.target.value)}
-                              className="text-xs border border-gray-300 rounded px-2 py-1"
-                            >
-                              <option value="draft">Draft</option>
-                              <option value="pending">Pending</option>
-                              <option value="paid">Paid</option>
-                            </select>
-                            
-                            {/* Download PDF */}
-                            <button
-                              onClick={() => handleDownloadPDF(invoice)}
-                              className="text-gray-400 hover:text-gray-600 p-1"
-                              title="Download PDF"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          {/* Mobile Card View (Default on mobile) */}
+          <div className="sm:hidden space-y-3">
+            {filteredInvoices.map((invoice) => (
+              <InvoiceCard key={invoice.id} invoice={invoice} />
+            ))}
+          </div>
+
+          {/* Desktop View (Card or Table based on toggle) */}
+          <div className="hidden sm:block">
+            {viewMode === 'card' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredInvoices.map((invoice) => (
+                  <InvoiceCard key={invoice.id} invoice={invoice} />
+                ))}
+              </div>
+            ) : (
+              <div className="card">
+                <div className="card-body p-0">
+                  <div className="table-container">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Invoice #</th>
+                          <th>Client</th>
+                          <th>Amount</th>
+                          <th>Status</th>
+                          <th>Date</th>
+                          <th>Due Date</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredInvoices.map((invoice) => {
+                          const dueDate = invoice.dueDate?.toDate?.() || new Date(invoice.dueDate);
+                          const isOverdue = invoice.status !== 'paid' && dueDate < new Date();
+                          
+                          return (
+                            <tr key={invoice.id}>
+                              <td className="font-medium">
+                                <Link 
+                                  to={`/invoices/${invoice.id}`}
+                                  className="text-primary-600 hover:text-primary-700"
+                                >
+                                  {invoice.invoiceNumber}
+                                </Link>
+                              </td>
+                              <td>{invoice.clientName}</td>
+                              <td className="font-medium">₹{invoice.total?.toLocaleString('en-IN')}</td>
+                              <td>
+                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(invoice.status, isOverdue)}`}>
+                                  <span>{getStatusIcon(invoice.status, isOverdue)}</span>
+                                  {isOverdue ? 'Overdue' : invoice.status}
+                                </span>
+                              </td>
+                              <td>{format(invoice.createdAt?.toDate?.() || new Date(invoice.createdAt), 'MMM dd, yyyy')}</td>
+                              <td className={isOverdue ? 'text-red-600 font-medium' : ''}>
+                                {format(dueDate, 'MMM dd, yyyy')}
+                              </td>
+                              <td>
+                                <div className="flex items-center gap-2">
+                                  <select
+                                    value={invoice.status}
+                                    onChange={(e) => handleStatusUpdate(invoice.id, e.target.value)}
+                                    className="text-xs border border-gray-300 rounded px-2 py-1"
+                                  >
+                                    <option value="draft">Draft</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="paid">Paid</option>
+                                  </select>
+                                  
+                                  <button
+                                    onClick={() => handleDownloadPDF(invoice)}
+                                    className="text-gray-400 hover:text-gray-600 p-1"
+                                    title="Download PDF"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };

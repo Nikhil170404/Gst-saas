@@ -1,7 +1,7 @@
-// src/pages/dashboard/DashboardPage.js
+// src/pages/dashboard/DashboardPage.js - Fixed version
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { InvoiceService } from '../../services/invoiceService';
+// Removed unused InvoiceService import
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
