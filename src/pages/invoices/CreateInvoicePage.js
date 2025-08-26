@@ -1,5 +1,5 @@
-// src/pages/invoices/CreateInvoicePage.js - Fixed Item Management
-import React, { useState, useEffect, useCallback } from 'react';
+// src/pages/invoices/CreateInvoicePage.js - Mobile Responsive with PDF
+import React, { useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -16,7 +16,7 @@ const CreateInvoicePage = () => {
   const [aiSuggestions, setAiSuggestions] = useState({});
   const [showPreview, setShowPreview] = useState(false);
 
-  const { register, control, watch, setValue, handleSubmit, formState: { errors }, trigger } = useForm({
+  const { register, control, watch, setValue, handleSubmit, formState: { errors } } = useForm({
     defaultValues: {
       clientName: '',
       clientGSTIN: '',
@@ -25,33 +25,27 @@ const CreateInvoicePage = () => {
         { description: '', quantity: 1, rate: 0, gstRate: 18 }
       ],
       notes: '',
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-    },
-    mode: 'onChange'
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 30 days from now
+    }
   });
 
-  const { fields, append, remove, update } = useFieldArray({
+  const { fields, append, remove } = useFieldArray({
     control,
     name: "items"
   });
 
   const watchedItems = watch("items");
-  const watchedForm = watch();
 
-  // Calculate totals with proper number conversion
-  const calculateTotals = useCallback(() => {
+  // Calculate totals
+  const calculateTotals = () => {
     const items = watchedItems || [];
     let subtotal = 0;
     let totalGST = 0;
 
     items.forEach(item => {
-      const quantity = parseFloat(item.quantity) || 0;
-      const rate = parseFloat(item.rate) || 0;
-      const gstRate = parseFloat(item.gstRate) || 0;
-      
-      if (quantity > 0 && rate > 0) {
-        const itemSubtotal = quantity * rate;
-        const itemGST = (itemSubtotal * gstRate) / 100;
+      if (item.quantity && item.rate) {
+        const itemSubtotal = parseFloat(item.quantity) * parseFloat(item.rate);
+        const itemGST = (itemSubtotal * parseFloat(item.gstRate || 0)) / 100;
         
         subtotal += itemSubtotal;
         totalGST += itemGST;
@@ -63,7 +57,7 @@ const CreateInvoicePage = () => {
       totalGST: Math.round(totalGST * 100) / 100,
       total: Math.round((subtotal + totalGST) * 100) / 100
     };
-  }, [watchedItems]);
+  };
 
   const totals = calculateTotals();
 
@@ -96,6 +90,17 @@ const CreateInvoicePage = () => {
             ...prev,
             [index]: suggestions[0]
           }));
+          
+          // Auto-set GST rate if confident match
+          if (suggestions[0].description.toLowerCase().includes(description.toLowerCase())) {
+            setValue(`items.${index}.gstRate`, suggestions[0].suggestedGSTRate);
+          }
+        }
+
+        // Get AI categorization
+        const category = await aiService.categorizeExpense(description, 0, '');
+        if (category.suggested_gst_rate) {
+          setValue(`items.${index}.gstRate`, category.suggested_gst_rate);
         }
       } catch (error) {
         console.log('AI suggestion error:', error);
@@ -105,69 +110,24 @@ const CreateInvoicePage = () => {
 
   // Add new item
   const addItem = () => {
-    append({ 
-      description: '', 
-      quantity: 1, 
-      rate: 0, 
-      gstRate: 18 
-    });
+    append({ description: '', quantity: 1, rate: 0, gstRate: 18 });
   };
 
   // Remove item
   const removeItem = (index) => {
     if (fields.length > 1) {
       remove(index);
-      // Clean up AI suggestions for removed item
-      setAiSuggestions(prev => {
-        const newSuggestions = { ...prev };
-        delete newSuggestions[index];
-        return newSuggestions;
-      });
     }
-  };
-
-  // Update item with validation
-  const updateItem = (index, field, value) => {
-    const currentItem = watchedItems[index];
-    const updatedItem = {
-      ...currentItem,
-      [field]: value
-    };
-    
-    // Validate numeric fields
-    if (['quantity', 'rate', 'gstRate'].includes(field)) {
-      const numValue = parseFloat(value) || 0;
-      if (numValue < 0) {
-        toast.error(`${field} cannot be negative`);
-        return;
-      }
-      updatedItem[field] = numValue;
-    }
-    
-    update(index, updatedItem);
-    trigger(`items.${index}.${field}`);
   };
 
   // Generate PDF preview
   const handleGeneratePDF = async (invoiceData = null) => {
     try {
       setLoading(true);
-      
-      // Validate form first
-      const isValid = await trigger();
-      if (!isValid) {
-        toast.error('Please fix form errors before generating PDF');
-        return;
-      }
-
       const dataToUse = invoiceData || {
-        ...watchedForm,
-        invoiceNumber: `PREVIEW-${Date.now()}`,
-        items: watchedItems?.filter(item => 
-          item.description && 
-          parseFloat(item.quantity) > 0 && 
-          parseFloat(item.rate) > 0
-        ) || [],
+        ...watch(),
+        invoiceNumber: `INV-${Date.now()}`,
+        items: watchedItems?.filter(item => item.description && item.quantity && item.rate) || [],
         subtotal: totals.subtotal,
         totalGST: totals.totalGST,
         total: totals.total,
@@ -175,22 +135,17 @@ const CreateInvoicePage = () => {
         status: 'draft'
       };
 
-      if (dataToUse.items.length === 0) {
-        toast.error('Please add at least one valid item to generate PDF');
-        return;
-      }
-
       const pdf = await InvoiceService.generatePDF(dataToUse, {
         businessName: userData?.businessName || 'Your Business',
         gstNumber: userData?.settings?.gstNumber,
         address: userData?.settings?.address
       });
       
-      pdf.save(`${dataToUse.invoiceNumber || 'invoice-preview'}.pdf`);
+      pdf.save(`${dataToUse.invoiceNumber || 'invoice'}.pdf`);
       toast.success('PDF generated successfully!');
     } catch (error) {
       console.error('PDF generation error:', error);
-      toast.error('Failed to generate PDF. Please check your form data.');
+      toast.error('Failed to generate PDF');
     } finally {
       setLoading(false);
     }
@@ -201,16 +156,9 @@ const CreateInvoicePage = () => {
     setLoading(true);
     
     try {
-      // Filter and validate items
-      const validItems = data.items?.filter(item => 
-        item.description && 
-        item.description.trim() &&
-        parseFloat(item.quantity) > 0 && 
-        parseFloat(item.rate) > 0
-      );
-
-      if (!validItems || validItems.length === 0) {
-        toast.error('Please add at least one valid item with description, quantity, and rate');
+      // Validate items
+      if (!data.items || data.items.length === 0 || !data.items[0].description) {
+        toast.error('Please add at least one item');
         return;
       }
 
@@ -220,15 +168,9 @@ const CreateInvoicePage = () => {
         return;
       }
 
-      // Prepare invoice data
       const invoiceData = {
         ...data,
-        items: validItems.map(item => ({
-          ...item,
-          quantity: parseFloat(item.quantity) || 0,
-          rate: parseFloat(item.rate) || 0,
-          gstRate: parseFloat(item.gstRate) || 0
-        })),
+        items: data.items.filter(item => item.description && item.quantity && item.rate),
         subtotal: totals.subtotal,
         totalGST: totals.totalGST,
         total: totals.total,
@@ -253,12 +195,7 @@ const CreateInvoicePage = () => {
 
   // Mobile Item Card Component
   const MobileItemCard = ({ item, index }) => {
-    const quantity = parseFloat(item.quantity) || 0;
-    const rate = parseFloat(item.rate) || 0;
-    const gstRate = parseFloat(item.gstRate) || 0;
-    const itemSubtotal = quantity * rate;
-    const itemGST = (itemSubtotal * gstRate) / 100;
-    const itemTotal = itemSubtotal + itemGST;
+    const itemTotal = (parseFloat(item.quantity) || 0) * (parseFloat(item.rate) || 0);
     const suggestion = aiSuggestions[index];
     
     return (
@@ -280,24 +217,14 @@ const CreateInvoicePage = () => {
         </div>
 
         {/* Description */}
-        <div className="form-group mb-4 relative">
-          <label className="form-label">Description *</label>
+        <div className="form-group-modern relative">
           <input
-            {...register(`items.${index}.description`, { 
-              required: 'Description is required',
-              minLength: { value: 2, message: 'Description too short' }
-            })}
-            className={`form-input ${errors.items?.[index]?.description ? 'border-red-500' : ''}`}
-            placeholder="Enter item description"
-            onChange={(e) => {
-              handleDescriptionChange(index, e.target.value);
-            }}
+            {...register(`items.${index}.description`, { required: true })}
+            className={`form-input-modern ${errors.items?.[index]?.description ? 'border-red-500' : ''}`}
+            placeholder=" "
+            onChange={(e) => handleDescriptionChange(index, e.target.value)}
           />
-          {errors.items?.[index]?.description && (
-            <div className="form-error mt-1 text-red-600 text-sm">
-              {errors.items[index].description.message}
-            </div>
-          )}
+          <label className="form-label-floating">Description *</label>
           
           {suggestion && (
             <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg">
@@ -319,46 +246,26 @@ const CreateInvoicePage = () => {
 
         {/* Quantity and Rate */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="form-group">
-            <label className="form-label">Quantity *</label>
+          <div className="form-group-modern">
             <input
-              {...register(`items.${index}.quantity`, { 
-                required: 'Quantity is required',
-                min: { value: 0.01, message: 'Quantity must be greater than 0' },
-                valueAsNumber: true
-              })}
+              {...register(`items.${index}.quantity`, { required: true, min: 0.01 })}
               type="number"
               step="0.01"
-              min="0.01"
-              className={`form-input ${errors.items?.[index]?.quantity ? 'border-red-500' : ''}`}
-              placeholder="1"
+              className="form-input-modern"
+              placeholder=" "
             />
-            {errors.items?.[index]?.quantity && (
-              <div className="form-error mt-1 text-red-600 text-sm">
-                {errors.items[index].quantity.message}
-              </div>
-            )}
+            <label className="form-label-floating">Quantity</label>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Rate (₹) *</label>
+          <div className="form-group-modern">
             <input
-              {...register(`items.${index}.rate`, { 
-                required: 'Rate is required',
-                min: { value: 0, message: 'Rate cannot be negative' },
-                valueAsNumber: true
-              })}
+              {...register(`items.${index}.rate`, { required: true, min: 0 })}
               type="number"
               step="0.01"
-              min="0"
-              className={`form-input ${errors.items?.[index]?.rate ? 'border-red-500' : ''}`}
-              placeholder="0.00"
+              className="form-input-modern"
+              placeholder=" "
             />
-            {errors.items?.[index]?.rate && (
-              <div className="form-error mt-1 text-red-600 text-sm">
-                {errors.items[index].rate.message}
-              </div>
-            )}
+            <label className="form-label-floating">Rate (₹)</label>
           </div>
         </div>
 
@@ -367,7 +274,7 @@ const CreateInvoicePage = () => {
           <div className="form-group">
             <label className="form-label">GST Rate</label>
             <select
-              {...register(`items.${index}.gstRate`, { valueAsNumber: true })}
+              {...register(`items.${index}.gstRate`)}
               className="form-select"
             >
               <option value={0}>0%</option>
@@ -380,27 +287,11 @@ const CreateInvoicePage = () => {
 
           <div className="flex flex-col justify-end">
             <label className="form-label">Amount</label>
-            <div className="px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg font-semibold text-lg text-center">
+            <div className="px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg font-semibold text-lg">
               ₹{itemTotal.toFixed(2)}
             </div>
           </div>
         </div>
-
-        {/* Item breakdown */}
-        {itemSubtotal > 0 && (
-          <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-600">
-            <div className="flex justify-between">
-              <span>Subtotal:</span>
-              <span>₹{itemSubtotal.toFixed(2)}</span>
-            </div>
-            {gstRate > 0 && (
-              <div className="flex justify-between">
-                <span>GST ({gstRate}%):</span>
-                <span>₹{itemGST.toFixed(2)}</span>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     );
   };
@@ -422,13 +313,9 @@ const CreateInvoicePage = () => {
               disabled={loading}
               className="btn btn-outline btn-modern"
             >
-              {loading ? (
-                <div className="spinner w-4 h-4 border-2 mr-2"></div>
-              ) : (
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              )}
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
               Preview PDF
             </button>
             
@@ -455,45 +342,40 @@ const CreateInvoicePage = () => {
               </h2>
               
               <div className="space-y-6">
-                <div className="form-group">
-                  <label className="form-label">Client Name *</label>
+                <div className="form-group-modern">
                   <input
-                    {...register('clientName', { 
-                      required: 'Client name is required',
-                      minLength: { value: 2, message: 'Name must be at least 2 characters' }
-                    })}
-                    className={`form-input ${errors.clientName ? 'border-red-500' : ''}`}
-                    placeholder="Enter client name"
+                    {...register('clientName', { required: 'Client name is required' })}
+                    className={`form-input-modern ${errors.clientName ? 'border-red-500' : ''}`}
+                    placeholder=" "
                   />
-                  {errors.clientName && (
-                    <div className="form-error mt-2 text-red-600 text-sm">{errors.clientName.message}</div>
-                  )}
+                  <label className="form-label-floating">Client Name *</label>
+                  {errors.clientName && <div className="form-error mt-2 text-red-600 text-sm">{errors.clientName.message}</div>}
                 </div>
 
-                <div className="form-group relative">
-                  <label className="form-label">Client GSTIN</label>
+                <div className="form-group-modern relative">
                   <input
                     {...register('clientGSTIN')}
-                    className="form-input"
-                    placeholder="22AAAAA0000A1Z5 (optional)"
+                    className="form-input-modern"
+                    placeholder=" "
                     onBlur={(e) => validateGSTIN(e.target.value)}
                   />
+                  <label className="form-label-floating">Client GSTIN</label>
                   {validatingGSTIN && (
-                    <div className="absolute right-3 top-8">
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                       <div className="spinner w-4 h-4 border-2"></div>
                     </div>
                   )}
                   <div className="form-help mt-1 text-xs text-gray-500">Leave blank if client is not GST registered</div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Client Address</label>
+                <div className="form-group-modern">
                   <textarea
                     {...register('clientAddress')}
-                    className="form-textarea"
+                    className="form-input-modern min-h-[100px]"
+                    placeholder=" "
                     rows="3"
-                    placeholder="Enter client billing address"
                   />
+                  <label className="form-label-floating">Client Address</label>
                 </div>
               </div>
             </div>
@@ -517,7 +399,7 @@ const CreateInvoicePage = () => {
               </div>
               
               <div className="overflow-x-auto">
-                <table className="table-modern w-full">
+                <table className="table-modern">
                   <thead>
                     <tr>
                       <th className="min-w-[200px]">Description *</th>
@@ -531,12 +413,7 @@ const CreateInvoicePage = () => {
                   <tbody>
                     {fields.map((field, index) => {
                       const item = watchedItems[index] || {};
-                      const quantity = parseFloat(item.quantity) || 0;
-                      const rate = parseFloat(item.rate) || 0;
-                      const gstRate = parseFloat(item.gstRate) || 0;
-                      const itemSubtotal = quantity * rate;
-                      const itemGST = (itemSubtotal * gstRate) / 100;
-                      const itemTotal = itemSubtotal + itemGST;
+                      const itemTotal = (parseFloat(item.quantity) || 0) * (parseFloat(item.rate) || 0);
                       const suggestion = aiSuggestions[index];
                       
                       return (
@@ -544,10 +421,8 @@ const CreateInvoicePage = () => {
                           <td>
                             <div className="relative">
                               <input
-                                {...register(`items.${index}.description`, { 
-                                  required: 'Description is required' 
-                                })}
-                                className={`form-input w-full ${errors.items?.[index]?.description ? 'border-red-500' : ''}`}
+                                {...register(`items.${index}.description`, { required: true })}
+                                className="form-input w-full"
                                 placeholder="Item description"
                                 onChange={(e) => handleDescriptionChange(index, e.target.value)}
                               />
@@ -571,35 +446,25 @@ const CreateInvoicePage = () => {
                           </td>
                           <td>
                             <input
-                              {...register(`items.${index}.quantity`, { 
-                                required: true, 
-                                min: 0.01,
-                                valueAsNumber: true
-                              })}
+                              {...register(`items.${index}.quantity`, { required: true, min: 0.01 })}
                               type="number"
                               step="0.01"
-                              min="0.01"
-                              className={`form-input w-full ${errors.items?.[index]?.quantity ? 'border-red-500' : ''}`}
+                              className="form-input w-full"
                               placeholder="1"
                             />
                           </td>
                           <td>
                             <input
-                              {...register(`items.${index}.rate`, { 
-                                required: true, 
-                                min: 0,
-                                valueAsNumber: true
-                              })}
+                              {...register(`items.${index}.rate`, { required: true, min: 0 })}
                               type="number"
                               step="0.01"
-                              min="0"
-                              className={`form-input w-full ${errors.items?.[index]?.rate ? 'border-red-500' : ''}`}
+                              className="form-input w-full"
                               placeholder="0.00"
                             />
                           </td>
                           <td>
                             <select
-                              {...register(`items.${index}.gstRate`, { valueAsNumber: true })}
+                              {...register(`items.${index}.gstRate`)}
                               className="form-select w-full"
                             >
                               <option value={0}>0%</option>
@@ -610,7 +475,7 @@ const CreateInvoicePage = () => {
                             </select>
                           </td>
                           <td>
-                            <div className="font-semibold text-right">
+                            <div className="font-semibold">
                               ₹{itemTotal.toFixed(2)}
                             </div>
                           </td>
@@ -619,7 +484,7 @@ const CreateInvoicePage = () => {
                               <button
                                 type="button"
                                 onClick={() => removeItem(index)}
-                                className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                                className="text-red-500 hover:text-red-700 p-1 rounded"
                                 title="Remove item"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -692,24 +557,25 @@ const CreateInvoicePage = () => {
               </h2>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="form-group">
-                  <label className="form-label">Due Date</label>
+                <div className="form-group-modern">
                   <input
                     {...register('dueDate')}
                     type="date"
-                    className="form-input"
+                    className="form-input-modern"
+                    placeholder=" "
                   />
+                  <label className="form-label-floating">Due Date</label>
                 </div>
 
                 <div className="sm:row-span-2">
-                  <div className="form-group">
-                    <label className="form-label">Notes</label>
+                  <div className="form-group-modern">
                     <textarea
                       {...register('notes')}
-                      className="form-textarea"
+                      className="form-input-modern min-h-[120px]"
+                      placeholder=" "
                       rows="4"
-                      placeholder="Any additional notes or terms..."
                     />
+                    <label className="form-label-floating">Notes</label>
                   </div>
                 </div>
               </div>
@@ -727,22 +593,17 @@ const CreateInvoicePage = () => {
                 <div className="space-y-4 text-sm">
                   <div>
                     <div className="font-semibold">Client:</div>
-                    <div className="text-gray-600">{watchedForm.clientName || 'Client Name'}</div>
+                    <div className="text-gray-600">{watch('clientName') || 'Client Name'}</div>
                   </div>
                   
                   <div>
                     <div className="font-semibold">Items:</div>
-                    {watchedItems?.filter(item => item.description && parseFloat(item.quantity) > 0 && parseFloat(item.rate) > 0).map((item, index) => {
-                      const quantity = parseFloat(item.quantity) || 0;
-                      const rate = parseFloat(item.rate) || 0;
-                      const itemTotal = quantity * rate;
-                      return (
-                        <div key={index} className="flex justify-between py-1 border-b border-gray-100">
-                          <span>{item.description} (×{quantity})</span>
-                          <span>₹{itemTotal.toFixed(2)}</span>
-                        </div>
-                      );
-                    })}
+                    {watchedItems?.filter(item => item.description).map((item, index) => (
+                      <div key={index} className="flex justify-between py-1 border-b border-gray-100">
+                        <span>{item.description}</span>
+                        <span>₹{((item.quantity || 0) * (item.rate || 0)).toFixed(2)}</span>
+                      </div>
+                    ))}
                   </div>
                   
                   <div className="pt-2 border-t">
@@ -757,7 +618,7 @@ const CreateInvoicePage = () => {
           )}
 
           {/* Form Actions */}
-          <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 -mx-4 mt-8">
+          <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 -mx-4">
             <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
               <button
                 type="button"
@@ -769,7 +630,7 @@ const CreateInvoicePage = () => {
               
               <button
                 type="submit"
-                disabled={loading || totals.total <= 0}
+                disabled={loading}
                 className="btn btn-primary btn-modern"
               >
                 {loading ? (
@@ -782,7 +643,7 @@ const CreateInvoicePage = () => {
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Create Invoice ({totals.total > 0 ? `₹${totals.total.toFixed(2)}` : 'Enter items'})
+                    Create Invoice
                   </>
                 )}
               </button>
