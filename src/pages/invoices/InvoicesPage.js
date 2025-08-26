@@ -1,4 +1,4 @@
-// src/pages/invoices/InvoicesPage.js - Mobile-Optimized Version
+// src/pages/invoices/InvoicesPage.js - Enhanced with Working PDF Downloads
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -9,13 +9,14 @@ import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
 const InvoicesPage = () => {
-  const { user } = useAuth();
+  const { user, userData } = useAuth();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState('card'); // 'card' or 'table'
+  const [viewMode, setViewMode] = useState('card');
   const [showFilters, setShowFilters] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState({});
 
   useEffect(() => {
     if (!user) return;
@@ -57,11 +58,57 @@ const InvoicesPage = () => {
 
   const handleDownloadPDF = async (invoice) => {
     try {
-      const pdf = await InvoiceService.generatePDF(invoice, user);
+      setPdfLoading(prev => ({ ...prev, [invoice.id]: true }));
+      
+      const pdf = await InvoiceService.generatePDF(invoice, {
+        businessName: userData?.businessName || 'Your Business',
+        gstNumber: userData?.settings?.gstNumber,
+        address: userData?.settings?.address
+      });
+      
       pdf.save(`${invoice.invoiceNumber}.pdf`);
       toast.success('PDF downloaded successfully');
     } catch (error) {
+      console.error('PDF generation error:', error);
       toast.error('Failed to generate PDF');
+    } finally {
+      setPdfLoading(prev => ({ ...prev, [invoice.id]: false }));
+    }
+  };
+
+  const handleBulkDownloadPDF = async () => {
+    if (filteredInvoices.length === 0) {
+      toast.error('No invoices to download');
+      return;
+    }
+
+    if (filteredInvoices.length > 10) {
+      toast.error('Maximum 10 invoices can be downloaded at once');
+      return;
+    }
+
+    try {
+      setPdfLoading(prev => ({ ...prev, bulk: true }));
+      
+      for (const invoice of filteredInvoices.slice(0, 10)) {
+        const pdf = await InvoiceService.generatePDF(invoice, {
+          businessName: userData?.businessName || 'Your Business',
+          gstNumber: userData?.settings?.gstNumber,
+          address: userData?.settings?.address
+        });
+        
+        pdf.save(`${invoice.invoiceNumber}.pdf`);
+        
+        // Add small delay between downloads
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      toast.success(`Downloaded ${Math.min(filteredInvoices.length, 10)} invoices`);
+    } catch (error) {
+      console.error('Bulk PDF generation error:', error);
+      toast.error('Failed to download some invoices');
+    } finally {
+      setPdfLoading(prev => ({ ...prev, bulk: false }));
     }
   };
 
@@ -140,11 +187,36 @@ const InvoicesPage = () => {
           </p>
           
           <div className="flex items-center gap-2">
+            {/* PDF Download Button */}
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleDownloadPDF(invoice);
+              }}
+              disabled={pdfLoading[invoice.id]}
+              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              title="Download PDF"
+            >
+              {pdfLoading[invoice.id] ? (
+                <div className="spinner w-4 h-4 border-2"></div>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              )}
+            </button>
+            
             {/* Status Update Dropdown */}
             <select
               value={invoice.status}
-              onChange={(e) => handleStatusUpdate(invoice.id, e.target.value)}
+              onChange={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleStatusUpdate(invoice.id, e.target.value);
+              }}
               className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white focus:border-primary-500 focus:outline-none"
+              onClick={(e) => e.stopPropagation()}
             >
               <option value="draft">Draft</option>
               <option value="pending">Pending</option>
@@ -156,6 +228,7 @@ const InvoicesPage = () => {
               <button
                 onClick={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   // Toggle dropdown menu - you can implement this
                 }}
                 className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
@@ -190,6 +263,26 @@ const InvoicesPage = () => {
         </div>
         
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Bulk PDF Download */}
+          {filteredInvoices.length > 0 && (
+            <button
+              onClick={handleBulkDownloadPDF}
+              disabled={pdfLoading.bulk}
+              className="btn btn-outline btn-sm btn-modern"
+              title="Download all visible invoices as PDF (max 10)"
+            >
+              {pdfLoading.bulk ? (
+                <div className="spinner w-4 h-4 border-2 mr-2"></div>
+              ) : (
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              )}
+              <span className="hidden sm:inline">Download All PDF</span>
+              <span className="sm:hidden">PDF All</span>
+            </button>
+          )}
+
           {/* View Toggle - Desktop Only */}
           <div className="hidden sm:flex items-center bg-gray-100 rounded-lg p-1">
             <button
@@ -430,6 +523,21 @@ const InvoicesPage = () => {
                               </td>
                               <td>
                                 <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleDownloadPDF(invoice)}
+                                    disabled={pdfLoading[invoice.id]}
+                                    className="text-gray-400 hover:text-blue-600 p-1 hover:bg-blue-50 rounded"
+                                    title="Download PDF"
+                                  >
+                                    {pdfLoading[invoice.id] ? (
+                                      <div className="spinner w-4 h-4 border-2"></div>
+                                    ) : (
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                  
                                   <select
                                     value={invoice.status}
                                     onChange={(e) => handleStatusUpdate(invoice.id, e.target.value)}
@@ -439,16 +547,6 @@ const InvoicesPage = () => {
                                     <option value="pending">Pending</option>
                                     <option value="paid">Paid</option>
                                   </select>
-                                  
-                                  <button
-                                    onClick={() => handleDownloadPDF(invoice)}
-                                    className="text-gray-400 hover:text-gray-600 p-1"
-                                    title="Download PDF"
-                                  >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                  </button>
                                 </div>
                               </td>
                             </tr>
