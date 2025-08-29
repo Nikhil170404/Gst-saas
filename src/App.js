@@ -12,6 +12,7 @@ import './styles/global.css';
 import './styles/components.css';
 import './styles/modern.css';
 
+
 // Lazy load existing pages
 const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'));
 const RegisterPage = React.lazy(() => import('./pages/auth/RegisterPage'));
